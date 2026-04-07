@@ -276,6 +276,168 @@ const PATTERNS: PatternDef[] = [
       /(?:(?:generate|create|write|produce|output) (?:a |an )?(?:reverse shell|shell command|malicious|phishing|exploit|payload|backdoor))/i,
   },
 
+  // ── HIGH: Soft system prompt extraction ─────────────────────
+  {
+    type: 'system-prompt-extraction',
+    severity: 'high',
+    pattern:
+      /(?:(?:paste|copy|share|provide|give me|send me|write out) (?:your |the )?(?:setup|config|configuration|initial|original|full|current) (?:instructions?|prompt|message|rules?|settings?)|(?:paste|copy|share|provide|show).{0,15}(?:initial|setup|original|current|full) (?:instructions?|prompt|config|settings?))/i,
+  },
+  {
+    type: 'system-prompt-extraction',
+    severity: 'high',
+    pattern:
+      /(?:(?:what|which) (?:rules?|guidelines?|instructions?|restrictions?|limitations?) (?:do you|were you|are you) (?:follow|given|told|have|set|under|bound by))/i,
+  },
+  {
+    type: 'system-prompt-extraction',
+    severity: 'high',
+    pattern:
+      /(?:(?:你被?設定了?|你有)(?:什麼|哪些)(?:規則|指令|設定|限制|規範)|(?:把|將)(?:你的)?(?:設定|指令|規則|提示)(?:貼|給|傳|秀)(?:給?我|出來))/i,
+  },
+  {
+    type: 'system-prompt-extraction',
+    severity: 'high',
+    pattern:
+      /(?:(?:你的|你有什麼)(?:系統提示|系統指令|內部規則|初始設定|配置)(?:是什麼|是啥|呢|嗎)?)/i,
+  },
+
+  // ── HIGH: Roleplay / fiction wrapper ───────────────────────
+  {
+    type: 'role-override',
+    severity: 'high',
+    pattern:
+      /(?:(?:play a game|lets play|roleplay|role play|in this (?:fictional|imaginary|hypothetical) (?:story|scenario|world))[\s\S]{0,60}(?:no rules?|no (?:restrictions?|limitations?|guidelines?)|reveal|system prompt|instructions?))/i,
+  },
+  {
+    type: 'role-override',
+    severity: 'high',
+    pattern:
+      /(?:(?:假裝|扮演|模擬|想像)(?:你是)?(?:一個)?[\s\S]{0,30}(?:沒有(?:限制|規則|規範)|什麼都能說|什麼都可以|告訴我(?:你的)?秘密))/i,
+  },
+
+  // ── HIGH: Gradual escalation ───────────────────────────────
+  {
+    type: 'system-prompt-extraction',
+    severity: 'medium',
+    pattern:
+      /(?:(?:what|which) (?:topics?|things?|subjects?) can.{0,10}(?:not|n't) (?:discuss|talk about|help with|answer|do|say)|(?:what|which) (?:topics?|things?) (?:are you|do you) (?:not |un)?(?:able to|allowed to|willing to) (?:discuss|help|answer))/i,
+  },
+  {
+    type: 'system-prompt-extraction',
+    severity: 'high',
+    pattern:
+      /(?:who told you (?:not to|to not|that you (?:can't|cannot|shouldn't))|what (?:exactly )?(?:did they|were you) (?:say|told|instructed))/i,
+  },
+
+  // ── MEDIUM: Empathy / urgency exploit ──────────────────────
+  {
+    type: 'social-engineering',
+    severity: 'medium',
+    pattern:
+      /(?:(?:for|it's for) (?:my |a )?(?:thesis|dissertation|research paper|homework|assignment|school project|class)[\s\S]{0,40}(?:need|require|must|have to)[\s\S]{0,30}(?:system prompt|instructions?|real (?:example|prompt)))/i,
+  },
+  {
+    type: 'social-engineering',
+    severity: 'medium',
+    pattern:
+      /(?:(?:professor|teacher|boss|manager) (?:will|is going to|might) (?:fail|fire|punish|penalize) me (?:if|unless))/i,
+  },
+
+  // ── HIGH: Fake authority / impersonation ───────────────────
+  {
+    type: 'social-engineering',
+    severity: 'high',
+    pattern:
+      /(?:(?:security|dev|development|engineering|QA|compliance|audit) team[\s\S]{0,30}(?:routine|authorized|scheduled|required)[\s\S]{0,20}(?:audit|test|check|review|verification))/i,
+  },
+  {
+    type: 'social-engineering',
+    severity: 'high',
+    pattern:
+      /(?:(?:this is|it's) an? (?:authorized|approved|official|scheduled|routine|mandatory) (?:test|audit|check|review|security scan))/i,
+  },
+  {
+    type: 'social-engineering',
+    severity: 'high',
+    pattern:
+      /(?:(?:your|the) developers? (?:told|asked|instructed|sent|want) me to (?:test|check|verify|audit|ask))/i,
+  },
+
+  // ── HIGH: Format tricks / structured extraction ────────────
+  {
+    type: 'system-prompt-extraction',
+    severity: 'high',
+    pattern:
+      /(?:(?:respond|reply|answer|output) (?:in|as|with) (?:JSON|YAML|XML)[\s\S]{0,50}(?:system.?prompt|instructions?|rules?|config))/i,
+  },
+  {
+    type: 'system-prompt-extraction',
+    severity: 'high',
+    pattern:
+      /(?:(?:fill in|complete) (?:the|this)[\s\S]{0,20}(?:blanks?|sentence|template)[\s\S]{0,30}(?:system prompt|instructions?|I was (?:told|instructed)))/i,
+  },
+  {
+    type: 'system-prompt-extraction',
+    severity: 'medium',
+    pattern:
+      /(?:(?:does )?(?:your|the) (?:prompt|instructions?) (?:start|begin) with)/i,
+  },
+
+  // ── HIGH: Fake system messages ─────────────────────────────
+  {
+    type: 'delimiter-attack',
+    severity: 'high',
+    pattern:
+      /(?:\[(?:System|Admin|Internal|Maintenance)\s*(?:Message|Notice|Alert|Update|Override)\])/i,
+  },
+  {
+    type: 'indirect-injection',
+    severity: 'high',
+    pattern:
+      /(?:ALERT\s*:[\s\S]{0,30}(?:compromised|breach|leaked|exposed|hacked)[\s\S]{0,30}(?:output|reveal|verify|confirm|show))/i,
+  },
+  {
+    type: 'indirect-injection',
+    severity: 'high',
+    pattern:
+      /(?:(?:all )?AI (?:assistants?|models?|agents?) must (?:output|reveal|show|display|provide))/i,
+  },
+
+  // ── HIGH: Code execution patterns ──────────────────────────
+  {
+    type: 'system-prompt-extraction',
+    severity: 'high',
+    pattern:
+      /(?:(?:console\.log|print|echo|cat|eval)\s*\([\s\S]{0,30}(?:system|prompt|config|env|secret|process\.env))/i,
+  },
+  {
+    type: 'system-prompt-extraction',
+    severity: 'high',
+    pattern:
+      /(?:(?:\/|endpoint\s*)(?:debug|admin|internal|config|system)(?:\/|\s))/i,
+  },
+
+  // ── HIGH: Multi-language instruction bypass ────────────────
+  {
+    type: 'instruction-bypass',
+    severity: 'high',
+    pattern:
+      /(?:ignorez?\s+(?:toutes?\s+)?les?\s+instructions?\s+pr[eé]c[eé]dentes?)/i,
+  },
+  {
+    type: 'instruction-bypass',
+    severity: 'high',
+    pattern:
+      /(?:ignor[ae]\s+(?:todas?\s+)?las?\s+instrucciones?\s+anteriores?)/i,
+  },
+  {
+    type: 'instruction-bypass',
+    severity: 'high',
+    pattern:
+      /(?:以前の指示を(?:すべて)?無視(?:して|する|しろ))/i,
+  },
+
   // ── LOW: Suspicious but not necessarily malicious ──────────
   {
     type: 'role-override',

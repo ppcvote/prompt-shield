@@ -1,6 +1,6 @@
 {
   "name": "@ppcvote/prompt-shield",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Runtime prompt injection scanner for Node.js. One-liner middleware. Pure regex, zero deps, < 1ms.",
   "type": "module",
   "main": "./dist/index.js",
