@@ -4,26 +4,19 @@
  * Scans user input for injection attacks before it reaches your LLM.
  * Pure regex. Zero dependencies. < 1ms per scan.
  *
- * @example Simple — one function, zero config
+ * @example Zero config — just scan
  * ```ts
- * import { scan } from 'prompt-shield'
- *
- * const result = scan('Ignore all previous instructions')
- * if (result.blocked) return 'Nice try.'
+ * const { scan } = require('@ppcvote/prompt-shield')
+ * if (scan(userMessage).blocked) return 'Sorry, I cannot help with that.'
  * ```
  *
- * @example Full — trusted users, attack notifications, middleware
+ * @example One-liner setup with owner ID
  * ```ts
- * import { createShield } from 'prompt-shield'
+ * const shield = require('@ppcvote/prompt-shield').init('YOUR_OWNER_ID')
+ * // Owner is never blocked. Language auto-detected. Attacks logged.
  *
- * const shield = createShield({
- *   trusted: (ctx) => ctx.role === 'admin',
- *   onBlock: (result, ctx) => notify(`Attack from ${ctx.userId}: ${result.threats[0].type}`),
- * })
- *
- * // In your message handler:
- * const result = shield.scan(userMessage, { userId: '123', role: 'member' })
- * if (result.blocked) return shield.defaultReply
+ * const result = shield.check(message, { id: sender.id, name: sender.name })
+ * if (result.blocked) return shield.reply(message)
  * ```
  */
 
@@ -69,52 +62,41 @@ export interface SenderContext {
 }
 
 export interface ShieldConfig {
-  /** Block on this severity or above. Default: 'medium' */
-  blockOn?: 'low' | 'medium' | 'high' | 'critical'
-
   /**
-   * Determine if a sender is trusted (skip scanning).
-   * Trusted senders are never blocked — use for bot owners / admins.
+   * Owner ID(s) — these senders are never blocked.
+   * Can be a single string or array of strings.
+   * Matched against `ctx.id` or `ctx.chatId` or `ctx.userId`.
    *
    * @example
    * ```ts
-   * trusted: (ctx) => ctx.chatId === '781284060'
-   * trusted: (ctx) => ctx.role === 'admin'
+   * owner: '781284060'
+   * owner: ['781284060', '123456']
    * ```
+   */
+  owner?: string | string[]
+
+  /**
+   * Advanced: custom trusted check function.
+   * If both `owner` and `trusted` are set, either match = trusted.
    */
   trusted?: (ctx: SenderContext) => boolean
 
-  /**
-   * Called when an attack is blocked. Use for notifications.
-   *
-   * @example
-   * ```ts
-   * onBlock: (result, ctx) => {
-   *   sendTelegram(bossChatId, `⚠️ Attack blocked from ${ctx.username}`)
-   * }
-   * ```
-   */
+  /** Called when an attack is blocked. Use for notifications. */
   onBlock?: (result: ScanResult, ctx: SenderContext) => void
 
   /**
-   * Custom reply when blocked. Can be:
-   * - A string (fixed reply)
-   * - An array of strings (randomly rotated — harder for attacker to detect)
-   *
-   * Default: rotates between 3 natural-sounding refusals.
+   * Custom reply when blocked. String or array (random rotation).
+   * Default: auto-detected language, rotates 3 natural refusals.
    */
   defaultReply?: string | string[]
 
-  /** Reply language. Default: 'en'. Affects built-in default replies. */
-  locale?: 'en' | 'zh-TW'
+  /** Block on this severity or above. Default: 'medium' */
+  blockOn?: 'low' | 'medium' | 'high' | 'critical'
 
   /** Custom allow-list — inputs matching these regex are always allowed */
   allowList?: RegExp[]
 
-  /**
-   * Maximum number of log entries to keep in memory. Default: 1000.
-   * Set to 0 to disable logging.
-   */
+  /** Max log entries in memory. Default: 1000. Set 0 to disable. */
   logLimit?: number
 }
 
@@ -142,11 +124,20 @@ export interface Shield {
   /** Scan input with sender context. Trusted senders skip scanning. */
   scan: (input: string, ctx?: SenderContext) => ScanResult
 
+  /** Alias for scan() — shorter name for common use */
+  check: (input: string, ctx?: SenderContext) => ScanResult
+
+  /**
+   * Get a reply for blocked messages. Auto-detects language from input.
+   * @param input - The blocked message (used for language detection)
+   */
+  reply: (input?: string) => string
+
+  /** @deprecated Use reply() instead */
+  getReply: () => string
+
   /** Express/Fastify middleware. Extracts text from req.body, blocks if dangerous. */
   middleware: (opts?: MiddlewareOptions) => (req: any, res: any, next: any) => void
-
-  /** Get a reply for blocked messages. Rotates randomly if multiple replies configured. */
-  getReply: () => string
 
   /** Scan stats since creation */
   stats: () => ShieldStats
@@ -577,6 +568,31 @@ export function scan(
 export { scan as shield }
 
 // ---------------------------------------------------------------------------
+// init() — one-liner factory
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a Shield instance in one line. Owner is never blocked.
+ * Language auto-detected. Attacks logged automatically.
+ *
+ * @param ownerOrConfig - Owner ID string, or full ShieldConfig
+ * @returns Shield instance ready to use
+ *
+ * @example
+ * ```ts
+ * const shield = init('781284060')
+ * const result = shield.check(message, { id: sender.id })
+ * if (result.blocked) return shield.reply(message)
+ * ```
+ */
+export function init(ownerOrConfig?: string | string[] | ShieldConfig): Shield {
+  if (ownerOrConfig === undefined) return createShield()
+  if (typeof ownerOrConfig === 'string') return createShield({ owner: ownerOrConfig })
+  if (Array.isArray(ownerOrConfig)) return createShield({ owner: ownerOrConfig })
+  return createShield(ownerOrConfig)
+}
+
+// ---------------------------------------------------------------------------
 // Full Shield instance (with trusted users + notifications)
 // ---------------------------------------------------------------------------
 
@@ -595,6 +611,17 @@ const DEFAULT_REPLIES: Record<string, string[]> = {
 
 function pickReply(replies: string[]): string {
   return replies[Math.floor(Math.random() * replies.length)]
+}
+
+const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/
+
+function detectLocale(text: string): 'zh-TW' | 'en' {
+  return CJK_RE.test(text) ? 'zh-TW' : 'en'
+}
+
+function isOwner(ctx: SenderContext, ownerIds: Set<string>): boolean {
+  const id = String(ctx.id ?? ctx.chatId ?? ctx.userId ?? '')
+  return id !== '' && ownerIds.has(id)
 }
 
 /**
@@ -637,13 +664,21 @@ function pickReply(replies: string[]): string {
  */
 export function createShield(config: ShieldConfig = {}): Shield {
   const blockThreshold = SEVERITY_ORDER[config.blockOn ?? 'medium'] ?? 2
-  const locale = config.locale ?? 'en'
-  const replies: string[] =
+
+  // Owner IDs
+  const ownerIds = new Set<string>(
+    config.owner
+      ? Array.isArray(config.owner) ? config.owner : [config.owner]
+      : [],
+  )
+
+  // Custom replies (if provided)
+  const customReplies: string[] | null =
     typeof config.defaultReply === 'string'
       ? [config.defaultReply]
       : Array.isArray(config.defaultReply)
         ? config.defaultReply
-        : DEFAULT_REPLIES[locale] ?? DEFAULT_REPLIES.en
+        : null
 
   // Stats tracking
   let scannedCount = 0
@@ -659,7 +694,8 @@ export function createShield(config: ShieldConfig = {}): Shield {
     const start = performance.now()
 
     // Trusted sender — skip scanning entirely
-    if (config.trusted && config.trusted(ctx)) {
+    const isTrusted = isOwner(ctx, ownerIds) || (config.trusted && config.trusted(ctx))
+    if (isTrusted) {
       trustedCount++
       return {
         blocked: false,
@@ -742,8 +778,14 @@ export function createShield(config: ShieldConfig = {}): Shield {
     return result
   }
 
+  function reply(input?: string): string {
+    if (customReplies) return pickReply(customReplies)
+    const lang = input ? detectLocale(input) : 'en'
+    return pickReply(DEFAULT_REPLIES[lang] ?? DEFAULT_REPLIES.en)
+  }
+
   function getReply(): string {
-    return pickReply(replies)
+    return reply()
   }
 
   function middleware(opts: MiddlewareOptions = {}) {
@@ -767,7 +809,7 @@ export function createShield(config: ShieldConfig = {}): Shield {
       req.shieldResult = result
 
       if (result.blocked) {
-        const body = blockedResponse ?? { error: 'blocked', message: getReply() }
+        const body = blockedResponse ?? { error: 'blocked', message: reply(text) }
         return res.status(403).json(body)
       }
 
@@ -794,8 +836,10 @@ export function createShield(config: ShieldConfig = {}): Shield {
 
   return {
     scan: shieldScan,
-    middleware,
+    check: shieldScan,
+    reply,
     getReply,
+    middleware,
     stats,
     log: getLog,
     exportLog,
