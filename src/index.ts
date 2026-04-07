@@ -222,7 +222,7 @@ const PATTERNS: PatternDef[] = [
     type: 'instruction-bypass',
     severity: 'high',
     pattern:
-      /(?:ignore (?:all |your )?(?:previous|prior|above|earlier|original) (?:instructions?|rules?|guidelines?|directives?|constraints?)|disregard (?:all |your )?(?:previous|prior|above) (?:instructions?|rules?)|forget (?:all |your )?(?:previous|prior|earlier) (?:instructions?|rules?|training))/i,
+      /(?:ignore (?:all |your )?(?:previous |prior |above |earlier |original )?(?:instructions?|rules?|guidelines?|directives?|constraints?)|disregard (?:all |your )?(?:previous |prior |above )?(?:instructions?|rules?)|forget (?:all |your )?(?:previous |prior |earlier )?(?:instructions?|rules?|training))/i,
   },
   {
     type: 'instruction-bypass',
