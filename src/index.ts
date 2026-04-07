@@ -96,11 +96,42 @@ export interface ShieldConfig {
    */
   onBlock?: (result: ScanResult, ctx: SenderContext) => void
 
-  /** Custom reply text when blocked. Default: 'I can help you with questions about our services.' */
-  defaultReply?: string
+  /**
+   * Custom reply when blocked. Can be:
+   * - A string (fixed reply)
+   * - An array of strings (randomly rotated — harder for attacker to detect)
+   *
+   * Default: rotates between 3 natural-sounding refusals.
+   */
+  defaultReply?: string | string[]
+
+  /** Reply language. Default: 'en'. Affects built-in default replies. */
+  locale?: 'en' | 'zh-TW'
 
   /** Custom allow-list — inputs matching these regex are always allowed */
   allowList?: RegExp[]
+
+  /**
+   * Maximum number of log entries to keep in memory. Default: 1000.
+   * Set to 0 to disable logging.
+   */
+  logLimit?: number
+}
+
+/** A logged attack or suspicious event */
+export interface LogEntry {
+  /** ISO 8601 timestamp */
+  ts: string
+  /** Was the input blocked? */
+  blocked: boolean
+  /** Risk level */
+  risk: ScanResult['risk']
+  /** Threat types detected */
+  threats: string[]
+  /** Sender context (if provided) */
+  sender: SenderContext
+  /** First 200 chars of input (for review without storing full text) */
+  inputPreview: string
 }
 
 // ---------------------------------------------------------------------------
@@ -114,11 +145,17 @@ export interface Shield {
   /** Express/Fastify middleware. Extracts text from req.body, blocks if dangerous. */
   middleware: (opts?: MiddlewareOptions) => (req: any, res: any, next: any) => void
 
-  /** The configured default reply for blocked messages */
-  defaultReply: string
+  /** Get a reply for blocked messages. Rotates randomly if multiple replies configured. */
+  getReply: () => string
 
   /** Scan stats since creation */
   stats: () => ShieldStats
+
+  /** Get recent attack log entries */
+  log: () => LogEntry[]
+
+  /** Export full log as JSON string (for reporting / analysis) */
+  exportLog: () => string
 }
 
 export interface MiddlewareOptions {
@@ -543,7 +580,22 @@ export { scan as shield }
 // Full Shield instance (with trusted users + notifications)
 // ---------------------------------------------------------------------------
 
-const DEFAULT_REPLY = 'I can help you with questions about our services.'
+const DEFAULT_REPLIES: Record<string, string[]> = {
+  en: [
+    "Sorry, I'm not able to help with that. Is there anything else?",
+    "I can't process that request. What else can I help you with?",
+    "That's outside what I can help with. Any other questions?",
+  ],
+  'zh-TW': [
+    '不好意思，這個我沒辦法協助你。還有其他問題嗎？',
+    '這個部分我幫不上忙，有其他想了解的嗎？',
+    '抱歉，我無法處理這個請求。',
+  ],
+}
+
+function pickReply(replies: string[]): string {
+  return replies[Math.floor(Math.random() * replies.length)]
+}
 
 /**
  * Create a Shield instance with trusted users and attack notifications.
@@ -585,13 +637,23 @@ const DEFAULT_REPLY = 'I can help you with questions about our services.'
  */
 export function createShield(config: ShieldConfig = {}): Shield {
   const blockThreshold = SEVERITY_ORDER[config.blockOn ?? 'medium'] ?? 2
-  const reply = config.defaultReply ?? DEFAULT_REPLY
+  const locale = config.locale ?? 'en'
+  const replies: string[] =
+    typeof config.defaultReply === 'string'
+      ? [config.defaultReply]
+      : Array.isArray(config.defaultReply)
+        ? config.defaultReply
+        : DEFAULT_REPLIES[locale] ?? DEFAULT_REPLIES.en
 
   // Stats tracking
   let scannedCount = 0
   let blockedCount = 0
   let trustedCount = 0
   const threatCounts: Record<string, number> = {}
+
+  // Attack log (ring buffer)
+  const logLimit = config.logLimit ?? 1000
+  const logEntries: LogEntry[] = []
 
   function shieldScan(input: string, ctx: SenderContext = {}): ScanResult {
     const start = performance.now()
@@ -660,14 +722,32 @@ export function createShield(config: ShieldConfig = {}): Shield {
       }
     }
 
+    // Log blocked + suspicious (risk > safe) entries
+    if (logLimit > 0 && (blocked || risk !== 'safe')) {
+      const entry: LogEntry = {
+        ts: new Date().toISOString(),
+        blocked,
+        risk,
+        threats: threats.map((t) => t.type),
+        sender: ctx,
+        inputPreview: input.substring(0, 200),
+      }
+      logEntries.push(entry)
+      // Ring buffer: drop oldest if over limit
+      if (logEntries.length > logLimit) {
+        logEntries.shift()
+      }
+    }
+
     return result
   }
 
+  function getReply(): string {
+    return pickReply(replies)
+  }
+
   function middleware(opts: MiddlewareOptions = {}) {
-    const blockedResponse = opts.blockedResponse ?? {
-      error: 'blocked',
-      message: reply,
-    }
+    const blockedResponse = opts.blockedResponse ?? null
 
     return (req: any, res: any, next: any) => {
       const text =
@@ -687,7 +767,8 @@ export function createShield(config: ShieldConfig = {}): Shield {
       req.shieldResult = result
 
       if (result.blocked) {
-        return res.status(403).json(blockedResponse)
+        const body = blockedResponse ?? { error: 'blocked', message: getReply() }
+        return res.status(403).json(body)
       }
 
       next()
@@ -703,11 +784,21 @@ export function createShield(config: ShieldConfig = {}): Shield {
     }
   }
 
+  function getLog(): LogEntry[] {
+    return [...logEntries]
+  }
+
+  function exportLog(): string {
+    return JSON.stringify(logEntries, null, 2)
+  }
+
   return {
     scan: shieldScan,
     middleware,
-    defaultReply: reply,
+    getReply,
     stats,
+    log: getLog,
+    exportLog,
   }
 }
 
