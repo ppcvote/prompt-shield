@@ -1,0 +1,57 @@
+{
+  "name": "@ppcvote/prompt-shield",
+  "version": "1.0.0",
+  "description": "Runtime prompt injection scanner for Node.js. One-liner middleware. Pure regex, zero deps, < 1ms.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run lint && npm test && npm run build"
+  },
+  "keywords": [
+    "prompt-injection",
+    "llm-security",
+    "ai-safety",
+    "middleware",
+    "express",
+    "fastify",
+    "shield",
+    "runtime-protection",
+    "input-validation",
+    "owasp-llm"
+  ],
+  "author": "Ultra Lab <dev@ultralab.tw> (https://ultralab.tw)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ppcvote/prompt-shield.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ppcvote/prompt-shield/issues"
+  },
+  "homepage": "https://github.com/ppcvote/prompt-shield#readme",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "typescript": "^5.5.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
